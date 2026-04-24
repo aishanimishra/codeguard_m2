@@ -34,3 +34,8 @@ frontend/dist/
 **/__pycache__/
 *.pyc
 *.db
+terraform.exe
+*.exe
+.terraform/
+*.tfstate
+*.tfstate.backup
