@@ -1,0 +1,180 @@
+---
+- name: Deploy CodeGuard to EC2
+  hosts: codeguard
+  become: yes
+
+  vars:
+    app_dir: /app/codeguard
+    data_dir: /app/data
+
+  tasks:
+
+    # ── System setup ────────────────────────────────────────────
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+          - git
+          - awscli
+          - python3-pip
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+          - curl
+          - unzip
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    # ── Directories ──────────────────────────────────────────────
+    - name: Create app directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Create data directory for SQLite
+      file:
+        path: "{{ data_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    # ── Clone CodeGuard repo ─────────────────────────────────────
+    - name: Clone CodeGuard repository
+      git:
+        repo: "{{ github_repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+        force: yes
+      become_user: ubuntu
+
+    # ── Environment file ─────────────────────────────────────────
+    - name: Copy .env file to server
+      copy:
+        content: |
+          GITHUB_CLIENT_ID={{ github_client_id }}
+          GITHUB_CLIENT_SECRET={{ github_client_secret }}
+          GITHUB_WEBHOOK_SECRET={{ github_webhook_secret }}
+          SECRET_KEY={{ secret_key }}
+          FRONTEND_URL=http://{{ ansible_host }}
+          DATABASE_URL=sqlite+aiosqlite:////app/data/codeguard.db
+          AWS_DEFAULT_REGION={{ aws_region }}
+          S3_REPORTS_BUCKET={{ s3_reports_bucket }}
+          S3_BACKUPS_BUCKET={{ s3_backups_bucket }}
+        dest: "{{ app_dir }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    # ── Docker Compose ───────────────────────────────────────────
+    - name: Stop existing containers
+      shell: docker compose down
+      args:
+        chdir: "{{ app_dir }}"
+      ignore_errors: yes
+      become_user: ubuntu
+
+    - name: Build and start containers
+      shell: docker compose up --build -d
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: ubuntu
+
+    # ── Backup script ────────────────────────────────────────────
+    - name: Create database backup script
+      copy:
+        content: |
+          #!/bin/bash
+          BUCKET="{{ s3_backups_bucket }}"
+          DATE=$(date +%Y-%m-%d-%H%M)
+          DB_PATH="/app/data/codeguard.db"
+          if [ -f "$DB_PATH" ]; then
+            aws s3 cp "$DB_PATH" "s3://$BUCKET/codeguard-$DATE.db"
+            echo "Backup completed: codeguard-$DATE.db"
+          else
+            echo "Database not found at $DB_PATH"
+          fi
+        dest: /usr/local/bin/codeguard-backup.sh
+        mode: '0755'
+
+    - name: Schedule daily backup via cron
+      cron:
+        name: "CodeGuard daily DB backup"
+        minute: "0"
+        hour: "2"
+        job: "/usr/local/bin/codeguard-backup.sh >> /var/log/codeguard-backup.log 2>&1"
+
+    # ── CloudWatch agent ─────────────────────────────────────────
+    - name: Download CloudWatch agent
+      get_url:
+        url: https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+        dest: /tmp/cloudwatch-agent.deb
+
+    - name: Install CloudWatch agent
+      apt:
+        deb: /tmp/cloudwatch-agent.deb
+
+    - name: Configure CloudWatch agent
+      copy:
+        content: |
+          {
+            "logs": {
+              "logs_collected": {
+                "files": {
+                  "collect_list": [
+                    {
+                      "file_path": "/var/lib/docker/containers/**/*-json.log",
+                      "log_group_name": "/codeguard/app",
+                      "log_stream_name": "{instance_id}/docker",
+                      "timezone": "UTC"
+                    }
+                  ]
+                }
+              }
+            },
+            "metrics": {
+              "metrics_collected": {
+                "mem": { "measurement": ["mem_used_percent"] },
+                "disk": { "measurement": ["disk_used_percent"], "resources": ["/"] }
+              }
+            }
+          }
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+    - name: Start CloudWatch agent
+      shell: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+      ignore_errors: yes
+
+    # ── Health check ─────────────────────────────────────────────
+    - name: Wait for app to be ready
+      uri:
+        url: "http://localhost:8000/api/health"
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 10
+      ignore_errors: yes
+
+    - name: Show deployment result
+      debug:
+        msg: "CodeGuard deployed at http://{{ ansible_host }} — Health: {{ health_check.status | default('checking...') }}"

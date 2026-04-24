@@ -1,0 +1,9 @@
+# Copy this file to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to Git — it contains your settings
+
+aws_region       = "us-east-1"
+project_name     = "codeguard"
+environment      = "production"
+instance_type    = "t2.micro"
+public_key_path  = "~/.ssh/codeguard.pub"
+allowed_ssh_cidr = "0.0.0.0/0"   # Replace with your actual IP: "your.ip.here/32"

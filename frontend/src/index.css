@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  
+  body {
+    @apply bg-bg-base text-txt-primary font-sans;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-bg-base; }
+  ::-webkit-scrollbar-thumb { @apply bg-bg-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-txt-muted; }
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-surface border border-bg-border rounded-lg;
+  }
+  .card-raised {
+    @apply bg-bg-raised border border-bg-border rounded-lg;
+  }
+  .btn-primary {
+    @apply bg-accent-green text-bg-base font-mono font-bold text-sm px-5 py-2.5 rounded
+           hover:bg-opacity-90 transition-all duration-150 active:scale-95;
+  }
+  .btn-ghost {
+    @apply border border-bg-border text-txt-secondary font-mono text-sm px-4 py-2 rounded
+           hover:border-txt-muted hover:text-txt-primary transition-all duration-150;
+  }
+  .badge-pass {
+    @apply inline-flex items-center gap-1.5 bg-accent-green bg-opacity-10 text-accent-green
+           border border-accent-green border-opacity-20 text-xs font-mono px-2.5 py-1 rounded;
+  }
+  .badge-fail {
+    @apply inline-flex items-center gap-1.5 bg-accent-red bg-opacity-10 text-accent-red
+           border border-accent-red border-opacity-20 text-xs font-mono px-2.5 py-1 rounded;
+  }
+  .badge-pending {
+    @apply inline-flex items-center gap-1.5 bg-accent-amber bg-opacity-10 text-accent-amber
+           border border-accent-amber border-opacity-20 text-xs font-mono px-2.5 py-1 rounded;
+  }
+  .badge-info {
+    @apply inline-flex items-center gap-1.5 bg-accent-blue bg-opacity-10 text-accent-blue
+           border border-accent-blue border-opacity-20 text-xs font-mono px-2.5 py-1 rounded;
+  }
+  .terminal-line {
+    @apply font-mono text-sm text-txt-secondary leading-relaxed;
+  }
+  .score-ring {
+    transform-origin: center;
+    transform: rotate(-90deg);
+  }
+}
+
+/* Scanline effect on header */
+.scanline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 230, 118, 0.015) 2px,
+    rgba(0, 230, 118, 0.015) 4px
+  );
+  pointer-events: none;
+}
+
+/* Glow effects */
+.glow-green { box-shadow: 0 0 20px rgba(0, 230, 118, 0.15); }
+.glow-red   { box-shadow: 0 0 20px rgba(255, 68, 68, 0.15); }
+.glow-amber { box-shadow: 0 0 20px rgba(255, 171, 0, 0.15); }
+
+/* Code highlighting */
+.issue-error    { border-left: 2px solid #ff4444; }
+.issue-warning  { border-left: 2px solid #ffab00; }
+.issue-convention { border-left: 2px solid #4fc3f7; }
+.issue-refactor { border-left: 2px solid #b388ff; }
+.issue-fatal    { border-left: 2px solid #ff1744; }
